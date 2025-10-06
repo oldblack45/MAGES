@@ -18,7 +18,7 @@ MAGES/
 │
 ├─ agents/                        # Custom country agents implementing reasoning paradigms
 │   ├─ cot_agent.py               # Chain-of-Thought agent
-│   ├─ react_agent.py             # ReAct agent
+│   ├─ war_agent.py               # WarAgent framework (macro-level historical simulation)
 │   └─ werewolf_agent.py          # Werewolf-inspired agent
 │
 ├─ models/                        # Generic or abstract layers (if used)
@@ -172,4 +172,3 @@ experiments/
     ├─ quick_comparison_results.json
     └─ unified_comparison_results.json
 ```
-

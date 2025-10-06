@@ -6,16 +6,16 @@ from matplotlib.patches import Patch
 plt.rcParams['font.sans-serif'] = ['SimHei', 'Arial Unicode MS', 'DejaVu Sans']
 plt.rcParams['axes.unicode_minus'] = False
 
-# 定义模型名称和指标
-models = ['Werewolf', 'CoT', 'ReAct', 'Ours']
+# 定义模型名称和指标 - 删除 ReAct，添加 WarAgent
+models = ['Werewolf', 'CoT', 'WarAgent', 'Ours']
 metrics = ['EA', 'AS', 'SR', 'OM', 'FS']
 
-# 生成示例数据 (二维数组：模型 × 指标)
+# 生成示例数据 (二维数组：模型 × 指标) - 更新为 WarAgent 数据
 data = np.array([
     [0.17, 0.24, 0.47, 0.71, 0.47],  # Werewolf
     [0.10, 0.18, 0.48, 0.73, 0.47],  # CoT
-    [0.17, 0.24, 0.49, 0.70, 0.48],  # ReAct
-    [0.35, 0.37, 0.54, 0.72, 0.54],  # Ours
+    [0.20, 0.28, 0.52, 0.68, 0.50],  # WarAgent (宏观历史模拟)
+    [0.35, 0.37, 0.54, 0.72, 0.54],  # Ours (MAGES)
 ])
 
 # 设置颜色（与原图一致）

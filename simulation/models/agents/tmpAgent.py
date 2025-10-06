@@ -1,6 +1,17 @@
-from LLMAgent import LLMAgent
+from openai import OpenAI
 
-x = LLMAgent(agent_name="X", has_chat_history=False, online_track=True, json_format=False, system_prompt='',
-                         llm_model='gpt-4o')
-result =x.get_response(user_template="hello", input_param_dict={})
-print(result)
+client = OpenAI(
+    base_url="https://mj.chatgptten.com/v1",
+    api_key="sk-IMblefS5KQ5ET8izUvenvX71tOXiIZDp3ICQ33mFcUtKV8lq"
+)
+
+response = client.chat.completions.create(
+  model="gpt-4o",
+
+  messages=[
+      {"role": "user", "content": "天津大学怎么样。"}
+  ],
+  # timeout=100,
+
+)
+print(response.choices[0].message.content)

@@ -4,7 +4,8 @@ from langchain_community.chat_message_histories import SQLChatMessageHistory
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder, PromptTemplate
 from langchain_core.output_parsers import StrOutputParser, JsonOutputParser
 from langchain_community.llms import SparkLLM
-from langchain_openai import AzureChatOpenAI, ChatOpenAI
+from langchain_openai import ChatOpenAI
+
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_openai import OpenAIEmbeddings
@@ -19,14 +20,15 @@ from ..cognitive.experiment_logger import record_llm_call
 from ..cognitive.experiment_logger import log_print
 
 
-os.environ["IFLYTEK_SPARK_APP_ID"] = "Your AppID"
-os.environ["IFLYTEK_SPARK_API_SECRET"] = "Your API Secret"
-os.environ["IFLYTEK_SPARK_API_KEY"] = "Your API Key"
+os.environ["IFLYTEK_SPARK_APP_ID"] = "55713da8"
+os.environ["IFLYTEK_SPARK_API_SECRET"] = "NzI1OThjNDI0ODM5M2NiODBhY2NlYjFj"
 
-os.environ["OPENAI_API_KEY"] = "Your OpenAI Key"
-os.environ["OPENAI_BASE_URL"] = "Your OpenAI Base URL"
+os.environ["IFLYTEK_SPARK_API_KEY"] = "966252a76081be0e92e8fb0d00e7c858"
+os.environ["OPENAI_API_KEY"] = "sk-IMblefS5KQ5ET8izUvenvX71tOXiIZDp3ICQ33mFcUtKV8lq"
+os.environ["OPENAI_BASE_URL"] = "https://mj.chatgptten.com/v1"
 
-os.environ["DASHSCOPE_API_KEY"] = "Your DashScope API Key"
+os.environ["DASHSCOPE_API_KEY"] = "sk-b773947f621d49dc949b5cd65e0f1340"
+
 
 # ollama模型白名单
 OLLAMA_MODEL_LIST = {
@@ -97,9 +99,9 @@ class LLMAgent:
                 api_url='ws://spark-api.xf-yun.com/v1.1/chat',
                 model='lite'
             )
-        elif self.llm_model == 'qwen':
+        elif self.llm_model == 'qwen3-max':
             model = Tongyi(
-                model="qwen-max-latest",
+                model="qwen3-max",
             )
         elif self.llm_model == 'qwen-turbo':
             model = Tongyi(
@@ -109,10 +111,9 @@ class LLMAgent:
             try:
                 model = ChatOpenAI(
                     model=self.llm_model,
-                    api_key=os.environ["OPENAI_API_KEY"],
-                    base_url=os.environ.get("OPENAI_BASE_URL"),
                 )
             except Exception as e:
+                print(e)
                 raise Exception(f'LLMAgent.llm_model ({self.llm_model}) is not allowed')
 
         # 3. Create parser

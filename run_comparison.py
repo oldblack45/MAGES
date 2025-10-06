@@ -31,15 +31,15 @@ def create_unified_experiment_folder():
 
 def run_quick_comparison():
     """运行快速比较测试"""
-    print("快速比较测试 - CoT vs ReAct vs Werewolf vs Cognitive")
+    print("快速比较测试 - Hypothetical Minds vs WarAgent vs Werewolf vs Cognitive")
     print("="*50)
     
     try:
-        from comparative_cognitive_world import ComparativeCognitiveWorld, run_method_comparison
-        
-        # 运行四种方法的比较
-        methods = ["cognitive", "cot", "react", "werewolf"]
-        
+        from comparative_cognitive_world import ComparativeCognitiveWorld
+
+        # 运行四种方法的比较 - 用 hm 替换 cot
+        methods = ["cognitive", "hm", "war", "werewolf"]
+
         # 创建统一的实验文件夹
         unified_folder = create_unified_experiment_folder()
         print(f"快速对比结果将保存在: {unified_folder}")
@@ -54,7 +54,7 @@ def run_quick_comparison():
                     if result:
                         results[method] = {
                             "scores": {"final_score": result.final_score},
-                            "method_description": "认知增强模型"
+                            "method_description": "认知增强模型 (MAGES)"
                         }
                     else:
                         results[method] = {"error": "认知模型测试失败"}
@@ -374,15 +374,15 @@ def run_unified_comparison():
     unified_folder = create_unified_experiment_folder()
     print(f"所有对比结果将保存在: {unified_folder}")
     
-    # 获取要测试的方法
-    print("\n可用方法: cognitive, cot, react, werewolf")
-    methods_input = input("输入要比较的方法 (用逗号分隔, 如: cognitive,cot,react, 默认为全部): ").strip()
-    
+    # 获取要测试的方法 - 用 hm 替换 cot
+    print("\n可用方法: cognitive, hm, war, werewolf")
+    methods_input = input("输入要比较的方法 (用逗号分隔, 如: cognitive,hm,war, 默认为全部): ").strip()
+
     if methods_input:
-        methods = [m.strip() for m in methods_input.split(",") if m.strip() in ["cognitive", "cot", "react", "werewolf"]]
+        methods = [m.strip() for m in methods_input.split(",") if m.strip() in ["cognitive", "hm", "war", "werewolf"]]
     else:
-        methods = ["cognitive", "cot", "react", "werewolf"]
-    
+        methods = ["cognitive", "hm", "war", "werewolf"]
+
     print(f"将比较方法: {methods}")
     
     max_steps = input("最大步数 (默认8): ").strip()
@@ -411,7 +411,7 @@ def run_unified_comparison():
                             "om_score": result.om_score,
                             "final_score": result.final_score
                         },
-                        "method_description": "认知增强模型"
+                        "method_description": "认知增强模型 (MAGES)"
                     }
                 else:
                     results[method] = {"error": "认知模型测试失败"}
@@ -493,13 +493,13 @@ def main():
     
     elif choice == "2":
         # 单方法测试
-        print("\n可用方法: cognitive, cot, react, werewolf")
-        method = input("选择方法 (默认cot): ").strip() or "cot"
-        
-        if method not in ["cognitive", "cot", "react", "werewolf"]:
-            print("无效方法，使用默认的cot")
-            method = "cot"
-        
+        print("\n可用方法: cognitive, hm, war, werewolf")
+        method = input("选择方法 (默认hm): ").strip() or "hm"
+
+        if method not in ["cognitive", "hm", "war", "werewolf"]:
+            print("无效方法，使用默认的hm")
+            method = "hm"
+
         if method == "cognitive":
             result = run_cognitive_model_test()
         else:
@@ -528,14 +528,14 @@ def main():
     
     elif choice == "5":
         # 自定义对比测试
-        print("\n可用方法: cognitive, cot, react, werewolf")
-        methods_input = input("输入要比较的方法 (用逗号分隔, 如: cognitive,cot,react): ").strip()
-        
+        print("\n可用方法: cognitive, hm, war, werewolf")
+        methods_input = input("输入要比较的方法 (用逗号分隔, 如: cognitive,hm,war): ").strip()
+
         if methods_input:
-            methods = [m.strip() for m in methods_input.split(",") if m.strip() in ["cognitive", "cot", "react", "werewolf"]]
+            methods = [m.strip() for m in methods_input.split(",") if m.strip() in ["cognitive", "hm", "war", "werewolf"]]
         else:
-            methods = ["cot", "react"]
-        
+            methods = ["hm", "war"]
+
         print(f"将比较方法: {methods}")
         
         max_steps = input("最大步数 (默认8): ").strip()

@@ -24,7 +24,7 @@ class WerewolfCountryAgent(LLMAgent):
         super().__init__(
             agent_name=f"Werewolf_{country_name}",
             has_chat_history=False,
-            llm_model='qwen3-235b-a22b-instruct-2507',
+            llm_model='qwen3-max',
             online_track=False,
             json_format=True
         )

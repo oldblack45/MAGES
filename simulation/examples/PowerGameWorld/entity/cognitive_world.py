@@ -40,7 +40,7 @@ class CognitiveCountryAgent(CognitiveAgent):
             has_chat_history=False,
             online_track=False,
             json_format=True,
-            llm_model='qwen3-coder-plus'
+            llm_model='qwen3-max'
         )
         
         self.country_name = country_name
