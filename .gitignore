@@ -4,3 +4,21 @@
 simulation/examples/HarmonyOS/mapper/**
 simulation/examples/SocialInvolution/entity/agent_log/**
 /simulation/examples/PowerGameExperimental/logs
+
+# ── 实验结果与日志（生成文件，不上传）──────────────────────────
+# 实验输出目录
+experiments/
+
+# Agent 运行日志
+simulation/SocialInvolution/entity/agent_log/
+
+# 根目录生成的图表与数据
+/*.csv
+/*.pdf
+/*.png
+
+# visualize/ 下的数据输出（保留 .py 脚本）
+visualize/*.csv
+
+# .claude 本地配置
+.claude/

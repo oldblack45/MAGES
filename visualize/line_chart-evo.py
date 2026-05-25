@@ -29,16 +29,17 @@ sns.lineplot(data=global_acc, x='Round', y='Prediction_Accuracy',
 sns.lineplot(data=persona_acc, x='Round', y='Prediction_Accuracy', hue='Target_Persona',
              style='Target_Persona', markers=True, dashes=False, linewidth=1.5, alpha=0.7)
 
-plt.xlabel('Game Rounds', fontsize=18, fontweight='bold')
-plt.ylabel('Prediction Accuracy', fontsize=18, fontweight='bold')
-plt.xticks(fontsize=16, fontweight='bold')
-plt.yticks(fontsize=16, fontweight='bold')
+plt.xlabel('Game Rounds', fontsize=22, fontweight='bold')
+plt.ylabel('Prediction Accuracy', fontsize=22, fontweight='bold')
+plt.xticks(fontsize=20, fontweight='bold')
+plt.yticks(fontsize=20, fontweight='bold')
 plt.ylim(0, 1.05)
-plt.legend(loc='lower right', prop={'weight': 'bold', 'size': 16})
+plt.legend(loc='lower right', prop={'weight': 'bold', 'size': 18})
 plt.grid(True, linestyle='--', alpha=0.7)
+plt.tight_layout()
 
 # Save the plot to a file
-plt.savefig('rq2_evolution_chart.png')
+plt.savefig('rq2_evolution_chart.pdf', bbox_inches='tight')
 plt.show()
 
 # Display the first few rows of the aggregated data to help with writing

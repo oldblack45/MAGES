@@ -24,10 +24,10 @@ plt.plot(df['Day'], df['Greedy Heuristic'],
          marker='x', color='#7f7f7f', linestyle='--', linewidth=1.5, markersize=4, label='Greedy Heuristic')
 
 # 4. 设置图表标题和坐标轴标签
-plt.xlabel('Simulation Day', fontsize=18, fontweight='bold')
-plt.ylabel('Profit per Distance', fontsize=18, fontweight='bold')
-plt.xticks(fontsize=16,fontweight='bold')
-plt.yticks(fontsize=16,fontweight='bold')
+plt.xlabel('Simulation Day', fontsize=22, fontweight='bold')
+plt.ylabel('Profit per Distance', fontsize=22, fontweight='bold')
+plt.xticks(fontsize=20, fontweight='bold')
+plt.yticks(fontsize=20, fontweight='bold')
 
 # 5. 去掉边框
 ax = plt.gca()
@@ -37,10 +37,10 @@ ax.spines['left'].set_visible(False)
 ax.spines['bottom'].set_visible(False)
 
 # 6. 设置图例和网格
-plt.legend(fontsize=16, loc='lower right',prop={'weight': 'bold', 'size': 16}) # 您可以根据需要调整 legend 的位置
+plt.legend(loc='lower right', prop={'weight': 'bold', 'size': 18})
 plt.grid(True, linestyle='--', alpha=0.6)
 
-# 6. 自动调整布局并保存为高清图片
+# 6. 自动调整布局并保存为 PDF（先保存再 show，避免空白图）
 plt.tight_layout()
+plt.savefig('delivery_curve.pdf', bbox_inches='tight')
 plt.show()
-plt.savefig('delivery_curve.png', dpi=300)

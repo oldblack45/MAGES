@@ -22,7 +22,6 @@ from agents.diplomacy_baselines import (
     HypotheticalMindsBaselineAgent,
     LATSBaselineAgent,
     ReActBaselineAgent,
-    ReflexionBaselineAgent,
 )
 from simulation.models.agents.LLMAgent import reset_llm_call_stats, set_llm_log_context, snapshot_llm_call_stats
 
@@ -31,7 +30,9 @@ AGGRESSIVE_ACTIONS = {"ATTACK", "SUPPORT_ATTACK"}
 # ---------------------------------------------------------------------------
 # Baseline personas and architectures -------------------------------------------------
 
-BASELINE_TYPES = ["ReAct", "Reflexion", "LATS", "HypotheticalMinds"]
+# Baseline types per paper §4.1: ratio 1:2:2:2 (RISE : ReAct : LATS : H.Minds)
+# Reflexion is excluded – paper Table 1 uses only these three baselines.
+BASELINE_TYPES = ["ReAct", "LATS", "HypotheticalMinds"]
 PLAYERS = ["England", "France", "Germany", "Italy", "Austria", "Russia", "Turkey"]
 
 
@@ -43,11 +44,11 @@ class TournamentConfig:
     output_dir: Path = Path("experiments/diplomacy_tournament")
     # Model
     llm_model: Optional[str] = None
-    # RQ4 Ablation
+    # RQ4 Ablation flags (paper §5.3 / Table 3)
     configuration: str = ""
-    enable_profiling: bool = True
-    enable_prediction: bool = True
-    enable_risk_gate: bool = True
+    enable_interaction_memory: bool = True   # w/o → uniform P_t
+    enable_hypothetical_reasoning: bool = True  # w/o → single LLM call
+    enable_utility_risk: bool = True         # w/o → disable leaf util + risk filter
     # If provided, RQ4 rows will be appended to this CSV (can be shared across variants).
     # Leave None to disable RQ4 logging for legacy runs.
     rq4_path: Optional[Path] = None
@@ -114,19 +115,22 @@ class DiplomacyTournamentRunner:
 
     async def _run_single_game(self, game_id: int) -> None:
         game = Game(map_name="standard")
-        self._sys_log(f"第{game_id}局开始：地图=standard 参赛方数量={len(PLAYERS)}")
+        # Seat rotation: cycle RISE through all 7 countries to remove geopolitical bias (paper §4.1)
+        rise_country = PLAYERS[(game_id - 1) % len(PLAYERS)]
+        other_countries = [p for p in PLAYERS if p != rise_country]
+        self._sys_log(f"第{game_id}局开始：地图=standard 参赛方数量={len(PLAYERS)} RISE国家={rise_country}")
         sage = RISEAgent(
-            country_name="England",
-            other_countries=[p for p in PLAYERS if p != "England"],
+            country_name=rise_country,
+            other_countries=other_countries,
             game_attributes={"max_rounds": self.config.rounds_per_game},
             experiment_logger=None,
             meta_goal="Maximize national interest and ensure survival",
             llm_model=self.config.llm_model,
-            enable_profiling=self.config.enable_profiling,
-            enable_prediction=self.config.enable_prediction,
-            enable_risk_gate=self.config.enable_risk_gate,
+            enable_interaction_memory=self.config.enable_interaction_memory,
+            enable_hypothetical_reasoning=self.config.enable_hypothetical_reasoning,
+            enable_utility_risk=self.config.enable_utility_risk,
         )
-        baselines = self._spawn_baselines()
+        baselines = self._spawn_baselines(rise_country, game_id)
         try:
             roster = {c: getattr(a, "baseline_type", "Unknown") for c, a in baselines.items()}
         except Exception:
@@ -169,12 +173,13 @@ class DiplomacyTournamentRunner:
                 last_feedback,
                 tension,
                 phase_label,
+                rise_country,
             )
 
-            england_used_concrete = bool((orders.get("concrete") or {}).get("England"))
+            rise_used_concrete = bool((orders.get("concrete") or {}).get(rise_country))
             self._sys_log(
-                f"第{game_id}局 第{round_no}轮下单摘要：英国动作={orders['abstract'].get('England','HOLD')} "
-                f"是否使用具体orders={england_used_concrete} 其他国家动作={{{', '.join([f'{k}:{v}' for k,v in orders['abstract'].items() if k!='England'])}}}"
+                f"第{game_id}局 第{round_no}轮下单摘要：{rise_country}动作={orders['abstract'].get(rise_country,'HOLD')} "
+                f"是否使用具体orders={rise_used_concrete} 其他国家动作={{{', '.join([f'{k}:{v}' for k,v in orders['abstract'].items() if k!=rise_country])}}}"
             )
             self._submit_orders_to_game(game, orders["abstract"], orders["concrete"])
             new_sc = self._count_supply_centers(game)
@@ -209,6 +214,7 @@ class DiplomacyTournamentRunner:
                 new_sc,
                 game_id,
                 round_no,
+                rise_country,
             )
 
             # 每轮结束输出 LLM 调用统计（总次数 + 每个 agent）
@@ -233,44 +239,51 @@ class DiplomacyTournamentRunner:
             if getattr(game, "is_game_done", False):
                 break
 
-        await self._log_rq3(game_id, game, baselines)
-        self._append_rq4(game_id, game, baselines)
+        await self._log_rq3(game_id, game, baselines, rise_country)
+        self._append_rq4(game_id, game, baselines, rise_country)
         self._sys_log(f"第{game_id}局结束：最终补给中心={self._count_supply_centers(game)}")
 
-    def _append_rq4(self, game_id: int, game: Any, baselines: Dict[str, BaselineAgent]) -> None:
+    def _append_rq4(self, game_id: int, game: Any, baselines: Dict[str, BaselineAgent], rise_country: str) -> None:
         if self.rq4_path is None:
             return
         sc_map = self._count_supply_centers(game)
-        england_sc = int(sc_map.get("England", 0))
-        survived = england_sc > 0
+        rise_sc = int(sc_map.get(rise_country, 0))
+        survived = rise_sc > 0
         winner = max(sc_map.items(), key=lambda item: item[1])[0] if sc_map else "Unknown"
-        is_winner = winner == "England"
+        is_winner = winner == rise_country
         try:
             with open(self.rq4_path, "a", newline="", encoding="utf-8") as f:
                 csv.writer(f).writerow([
                     self.config.configuration,
                     game_id,
-                    england_sc,
+                    rise_sc,
                     bool(survived),
                     bool(is_winner),
                 ])
         except Exception:
             pass
 
-    def _spawn_baselines(self) -> Dict[str, BaselineAgent]:
+    def _spawn_baselines(self, rise_country: str, game_id: int) -> Dict[str, BaselineAgent]:
+        """Fixed 1:2:2:2 composition per paper §4.1.
+
+        The 6 non-RISE countries are always assigned exactly:
+        2 × ReAct, 2 × LATS, 2 × HypotheticalMinds.
+        Assignment order rotates by game_id to avoid pairing bias.
+        """
         agents: Dict[str, BaselineAgent] = {}
-        for player in PLAYERS:
-            if player == "England":
-                continue
-            baseline_type = random.choice(BASELINE_TYPES)
+        non_rise = [p for p in PLAYERS if p != rise_country]
+        # Rotate the country list per game so baselines pair with different countries
+        offset = (game_id - 1) % len(non_rise)
+        rotated = non_rise[offset:] + non_rise[:offset]
+        # 2:2:2 split: first 2 → ReAct, next 2 → LATS, last 2 → HypotheticalMinds
+        type_assignment = (["ReAct"] * 2) + (["LATS"] * 2) + (["HypotheticalMinds"] * 2)
+        for player, baseline_type in zip(rotated, type_assignment):
             if baseline_type == "ReAct":
                 agents[player] = ReActBaselineAgent(player, llm_model=self.config.llm_model)
-            elif baseline_type == "Reflexion":
-                agents[player] = ReflexionBaselineAgent(player, llm_model=self.config.llm_model)
-            elif baseline_type == "HypotheticalMinds":
-                agents[player] = HypotheticalMindsBaselineAgent(player, llm_model=self.config.llm_model)
-            else:
+            elif baseline_type == "LATS":
                 agents[player] = LATSBaselineAgent(player, llm_model=self.config.llm_model)
+            else:
+                agents[player] = HypotheticalMindsBaselineAgent(player, llm_model=self.config.llm_model)
         return agents
 
     async def _gather_orders(
@@ -285,10 +298,11 @@ class DiplomacyTournamentRunner:
         last_feedback: Dict[str, str],
         tension: float,
         phase_label: str,
+        rise_country: str = "England",
     ) -> Dict[str, Dict[str, Any]]:
         legal_by_loc: Dict[str, List[str]] = {}
         try:
-            legal_by_loc = self._legal_orders_by_location(game, "ENGLAND")
+            legal_by_loc = self._legal_orders_by_location(game, rise_country.upper())
         except Exception:
             legal_by_loc = {}
 
@@ -308,7 +322,7 @@ class DiplomacyTournamentRunner:
             set_llm_log_context({
                 "scenario": "diplomacy",
                 "role": "rise",
-                "country": "England",
+                "country": rise_country,
                 "game_id": game_id,
                 "round": round_no,
                 "phase": phase_label,
@@ -322,7 +336,7 @@ class DiplomacyTournamentRunner:
             set_llm_log_context({
                 "scenario": "diplomacy",
                 "role": "rise",
-                "country": "England",
+                "country": rise_country,
                 "game_id": game_id,
                 "round": round_no,
                 "phase": phase_label,
@@ -351,7 +365,7 @@ class DiplomacyTournamentRunner:
             set_llm_log_context({
                 "scenario": "diplomacy",
                 "role": "rise",
-                "country": "England",
+                "country": rise_country,
                 "game_id": game_id,
                 "round": round_no,
                 "phase": phase_label,
@@ -362,15 +376,15 @@ class DiplomacyTournamentRunner:
          # 传入完整 orient_state：decide 需要 strategy / predicted_states 等信息
         decision_future = asyncio.to_thread(sage.decide, context, orient_state)
         baseline_orders, decision = await asyncio.gather(baseline_future, decision_future)
-        england_action = sage.act(decision)
+        rise_action = sage.act(decision)
 
-        england_concrete_orders: List[str] = []
+        rise_concrete_orders: List[str] = []
         if isinstance(decision, dict) and decision.get("concrete_orders_error"):
-            self._append_warning(game_id, round_no, "England", "RISE", "concrete_orders", str(decision.get("concrete_orders_error")))
+            self._append_warning(game_id, round_no, rise_country, "RISE", "concrete_orders", str(decision.get("concrete_orders_error")))
         if isinstance(decision, dict) and isinstance(decision.get("concrete_orders"), list):
-            england_concrete_orders = [str(o) for o in decision.get("concrete_orders") if isinstance(o, str)]
+            rise_concrete_orders = [str(o) for o in decision.get("concrete_orders") if isinstance(o, str)]
         elif getattr(sage, "get_last_concrete_orders", None):
-            england_concrete_orders = list(sage.get_last_concrete_orders())
+            rise_concrete_orders = list(sage.get_last_concrete_orders())
 
         abstract: Dict[str, str] = {}
         concrete: Dict[str, List[str]] = {}
@@ -390,9 +404,9 @@ class DiplomacyTournamentRunner:
             target_persona = getattr(agent, "persona", getattr(agent, "baseline_type", "Unknown"))
             self._append_rq2(game_id, round_no, context["phase"], country, str(target_persona), accuracy)
 
-        abstract["England"] = england_action
-        if england_concrete_orders:
-            concrete["England"] = england_concrete_orders
+        abstract[rise_country] = rise_action
+        if rise_concrete_orders:
+            concrete[rise_country] = rise_concrete_orders
         return {"abstract": abstract, "concrete": concrete}
 
     async def _post_round_updates(
@@ -407,11 +421,12 @@ class DiplomacyTournamentRunner:
         new_sc: Dict[str, int],
         game_id: int,
         round_no: int,
+        rise_country: str = "England",
     ) -> None:
-        england_feedback = feedback.get("England", "stable")
-        feedback_text = f"SC trend: {england_feedback}; tension={tension:.2f}"
-        other_actions = {country: action for country, action in orders.items() if country != "England"}
-        await asyncio.to_thread(sage.learn_from_interaction, orders["England"], feedback_text, other_actions, state)
+        rise_feedback = feedback.get(rise_country, "stable")
+        feedback_text = f"SC trend: {rise_feedback}; tension={tension:.2f}"
+        other_actions = {country: action for country, action in orders.items() if country != rise_country}
+        await asyncio.to_thread(sage.learn_from_interaction, orders[rise_country], feedback_text, other_actions, state)
 
         game_view = {
             "tension": tension,
@@ -469,14 +484,14 @@ class DiplomacyTournamentRunner:
                     sc,
                 ])
 
-    async def _log_rq3(self, game_id: int, game: Any, baselines: Dict[str, BaselineAgent]) -> None:
+    async def _log_rq3(self, game_id: int, game: Any, baselines: Dict[str, BaselineAgent], rise_country: str = "England") -> None:
         sc_map = self._count_supply_centers(game)
-        england_sc = sc_map.get("England", 0)
-        survived = england_sc > 0
+        rise_sc = sc_map.get(rise_country, 0)
+        survived = rise_sc > 0
         winner = max(sc_map.items(), key=lambda item: item[1])[0]
-        winner_arch = "RISE" if winner == "England" else getattr(baselines.get(winner), "baseline_type", "Unknown")
+        winner_arch = "RISE" if winner == rise_country else getattr(baselines.get(winner), "baseline_type", "Unknown")
         with open(self.rq3_path, "a", newline="", encoding="utf-8") as f:
-            csv.writer(f).writerow([game_id, england_sc, survived, winner_arch])
+            csv.writer(f).writerow([game_id, rise_sc, survived, winner_arch])
 
     def _derive_feedback(self, prev_sc: Dict[str, int], new_sc: Dict[str, int]) -> Dict[str, str]:
         feedback: Dict[str, str] = {}

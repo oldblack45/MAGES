@@ -104,7 +104,7 @@ class ProbabilityTracker:
     instantiated to break cognitive inertia.
     """
 
-    def __init__(self, similarity_threshold: float = 0.8):
+    def __init__(self, similarity_threshold: float = 0.85):
         self.tau = similarity_threshold
         # N_t(f|a) → env_counts[action][feedback] = count
         self.env_counts: Dict[str, Dict[str, float]] = defaultdict(
@@ -129,27 +129,39 @@ class ProbabilityTracker:
 
     # ---- Frequency update for environment  Eq (8) ---------------------
     def update_env(self, action: str, feedback_obs: str) -> None:
-        """N_{t+1}(f|a*) = N_t(f|a*) + I[sim(f, f_obs) >= τ]"""
+        """Hard-argmax bin assignment per paper §3.4 Eq(8).
+
+        f_hat = argmax_{f in B_f(a*)} s(f, f_obs).
+        Increment only the single best-matching bin if sim >= τ;
+        otherwise instantiate a new bin with count 1.
+        """
         bucket = self.env_counts[action]
-        matched = False
-        for existing in list(bucket.keys()):
-            if self._soft_match(existing, feedback_obs) >= self.tau:
-                bucket[existing] += 1.0
-                matched = True
-        if not matched:
-            bucket[feedback_obs] = 1.0   # new discrete state bin
+        if not bucket:
+            bucket[feedback_obs] = 1.0
+            return
+        best_key = max(bucket.keys(), key=lambda k: self._soft_match(k, feedback_obs))
+        if self._soft_match(best_key, feedback_obs) >= self.tau:
+            bucket[best_key] += 1.0
+        else:
+            bucket[feedback_obs] = 1.0
 
     # ---- Frequency update for peers  Eq (9) ---------------------------
     def update_peer(self, peer: str, action: str, reaction_obs: str) -> None:
-        """C_{t+1}^{(i)}(r|a*) = C_t^{(i)}(r|a*) + I[sim(r, r_obs) >= τ]"""
+        """Hard-argmax bin assignment per paper §3.4 Eq(9).
+
+        r_hat^(i) = argmax_{r in B_{r,i}(a*)} s(r, r_obs^(i)).
+        Increment only the single best-matching bin if sim >= τ;
+        otherwise instantiate a new bin with count 1.
+        """
         bucket = self.peer_counts[peer][action]
-        matched = False
-        for existing in list(bucket.keys()):
-            if self._soft_match(existing, reaction_obs) >= self.tau:
-                bucket[existing] += 1.0
-                matched = True
-        if not matched:
-            bucket[reaction_obs] = 1.0   # new discrete state bin
+        if not bucket:
+            bucket[reaction_obs] = 1.0
+            return
+        best_key = max(bucket.keys(), key=lambda k: self._soft_match(k, reaction_obs))
+        if self._soft_match(best_key, reaction_obs) >= self.tau:
+            bucket[best_key] += 1.0
+        else:
+            bucket[reaction_obs] = 1.0
 
     # ---- Laplace-smoothed distributions  Eq (10) ----------------------
     def get_env_distribution(self, action: str,
@@ -181,7 +193,7 @@ class WorldModel:
     obtained via Laplace smoothing over empty frequency tables.
     """
 
-    def __init__(self, tau: float = 0.8):
+    def __init__(self, tau: float = 0.85):
         self.history: List[InteractionTuple] = []
         self.prob: ProbabilityTracker = ProbabilityTracker(tau)
 
@@ -398,15 +410,15 @@ class RISEAgent(LLMAgent):
         adaptation_rate: float = 0.3,
         use_llm_reasoner: bool = False,
         llm_model: Optional[str] = None,
-        # Ablation switches
-        enable_profiling: bool = True,
-        enable_prediction: bool = True,
-        enable_risk_gate: bool = True,
+        # Ablation switches (paper §5.3 / Table 3)
+        enable_interaction_memory: bool = True,   # w/o → uniform P_t in Eq.(2)
+        enable_hypothetical_reasoning: bool = True,  # w/o → single LLM call
+        enable_utility_risk: bool = True,         # w/o → disable leaf util + risk filter
         # Scenario selection
         scenario: str = "diplomacy",
-        # BFS hyper-parameters
-        search_depth: int = 2,
-        top_k: int = 3,
+        # BFS hyper-parameters (paper §4.3 Pareto operating point)
+        search_depth: int = 3,    # D=3
+        top_k: int = 2,           # K=2
         prob_threshold: float = 0.05,
         risk_threshold: float = 0.7,
     ):
@@ -424,9 +436,9 @@ class RISEAgent(LLMAgent):
         self.meta_goal       = meta_goal
 
         # Ablation switches
-        self.enable_profiling  = bool(enable_profiling)
-        self.enable_prediction = bool(enable_prediction)
-        self.enable_risk_gate  = bool(enable_risk_gate)
+        self.enable_interaction_memory  = bool(enable_interaction_memory)
+        self.enable_hypothetical_reasoning = bool(enable_hypothetical_reasoning)
+        self.enable_utility_risk        = bool(enable_utility_risk)
 
         # BFS hyper-parameters (§3.3)
         self.search_depth   = search_depth
@@ -445,7 +457,7 @@ class RISEAgent(LLMAgent):
             self.adapter = DiplomacyAdapter(country_name, other_countries)
 
         # World Model W_t (§3.2) -------------------------------------------
-        self.world_model = WorldModel(tau=0.8)
+        self.world_model = WorldModel(tau=0.85)
 
         # Internal bookkeeping ---------------------------------------------
         self.current_step = 0
@@ -528,7 +540,11 @@ class RISEAgent(LLMAgent):
         rx_space = self.adapter.get_reaction_space()
         peers    = self.adapter.get_peers()
 
-        env_dist = self.world_model.prob.get_env_distribution(action, fb_space)
+        env_dist = (
+            self.world_model.prob.get_env_distribution(action, fb_space)
+            if self.enable_interaction_memory
+            else {f: 1.0 / len(fb_space) for f in fb_space}
+        )
 
         outcomes: List[Tuple[str, Dict[str, str], float]] = []
         for f, p_f in env_dist.items():
@@ -537,7 +553,7 @@ class RISEAgent(LLMAgent):
             pr: Dict[str, str] = {}
             p_prod = 1.0
             for peer in peers:
-                if self.enable_profiling:
+                if self.enable_interaction_memory:
                     pd = self.world_model.prob.get_peer_distribution(
                         peer, action, rx_space,
                     )
@@ -628,7 +644,7 @@ class RISEAgent(LLMAgent):
 
             # Batched risk assessment – Eq (3): L_safe = LLM_risk(L_d, G_meta)
             safe = list(expanded)
-            if self.enable_risk_gate:
+            if self.enable_utility_risk:
                 risks = self._llm_batch_risk(expanded, strategy)
                 for nd, rsk in zip(expanded, risks):
                     nd.risk_score = rsk
@@ -652,7 +668,7 @@ class RISEAgent(LLMAgent):
             if (not n.children or n.depth >= self.search_depth)
                and not n.pruned and n.depth > 0
         ]
-        if alive_leaves:
+        if alive_leaves and self.enable_utility_risk:
             utilities = self._llm_batch_eval(alive_leaves, strategy)
             for nd, u in zip(alive_leaves, utilities):
                 nd.utility = u
@@ -886,11 +902,11 @@ class RISEAgent(LLMAgent):
         cands, strategy = self._filter_candidate_actions(round_context)
         self.current_strategy = strategy
 
-        if self.enable_profiling:
+        if self.enable_interaction_memory:
             preds = self._generate_predictions()
         else:
             preds = [
-                PredictionRecord(p, "HOLD", "Profiling disabled", 0.5)
+                PredictionRecord(p, "HOLD", "Interaction Memory disabled", 0.5)
                 for p in self.other_countries
             ]
         self.prediction_cache[round_context.get("round", 0)] = preds
@@ -911,7 +927,7 @@ class RISEAgent(LLMAgent):
         preds = {r.target: r.predicted_action
                  for r in orient_state.get("predictions", [])}
 
-        if not self.enable_prediction:
+        if not self.enable_hypothetical_reasoning:
             best = self._fallback_decide(round_context, strat, cand)
             dec: Dict[str, Any] = {
                 "selected_action": best, "utility": 0.5,

@@ -21,22 +21,23 @@ from simulation.diplomacy.tournament import TournamentConfig, run_tournament
 # 直接在此修改配置
 RUN_MODE = "RQ3_MODELS"  # "RQ3" / "RQ4" / "RQ3_MODELS"
 
-# RQ3（常规）
-GAMES = 20
+# RQ3（常规）- 论文 Table 1: n=50 independent episodes
+GAMES = 50
 
-# RQ4（消融）
-GAMES_PER_VARIANT = 10
-ROUNDS_PER_GAME = 20
-MAX_YEAR = 1910
+# RQ4（消融）- 论文 Table 3: Diplomacy n=50 episodes
+GAMES_PER_VARIANT = 50
+ROUNDS_PER_GAME = 40  # 20 game-years × 2 movement phases (Spring + Fall)
+MAX_YEAR = 1920        # 论文: standard 20 rounds (1901--1920)
 # 每次运行生成独立目录，避免相互覆盖
 _ts = datetime.now().strftime("%Y%m%d_%H%M%S")
 OUTPUT_DIR = Path(f"experiments/diplomacy_tournament_{_ts}")
 
 
 MODEL_GROUPS = [
-    "gpt-4o",
-    "gpt-5",
-    "glm-4.5",
+    "gpt-5",           # GPT-5 (OpenAI)
+    "qwen3-235b-a22b", # Qwen3-235B (DashScope)
+    "gemma-3-27b-it",  # Gemma-3-27B
+    "gpt-oss-20b",     # GPT-OSS-20B
 ]
 
 
@@ -50,27 +51,23 @@ def _safe_dir_name(name: str) -> str:
     return "".join(out).strip("_") or "model"
 
 
-# RQ4 variants (Full + Ablations)
+# RQ4 variants per paper Table 3 (Full + 3 ablations)
 VARIANTS = [
     (
         "Full_Model",
-        dict(enable_profiling=True, enable_prediction=True, enable_risk_gate=True),
+        dict(enable_interaction_memory=True, enable_hypothetical_reasoning=True, enable_utility_risk=True),
     ),
     (
-        "w/o_Observe",
-        dict(enable_profiling=False, enable_prediction=True, enable_risk_gate=True),
+        "w/o_Interaction_Memory",
+        dict(enable_interaction_memory=False, enable_hypothetical_reasoning=True, enable_utility_risk=True),
     ),
     (
-        "w/o_Orient",
-        dict(enable_profiling=True, enable_prediction=False, enable_risk_gate=True),
+        "w/o_Hypothetical_Reasoning",
+        dict(enable_interaction_memory=True, enable_hypothetical_reasoning=False, enable_utility_risk=True),
     ),
     (
-        "w/o_Decide",
-        dict(enable_profiling=True, enable_prediction=True, enable_risk_gate=False),
-    ),
-    (
-        "w/o_All",
-        dict(enable_profiling=False, enable_prediction=False, enable_risk_gate=False),
+        "w/o_Utility_Risk",
+        dict(enable_interaction_memory=True, enable_hypothetical_reasoning=True, enable_utility_risk=False),
     ),
 ]
 
